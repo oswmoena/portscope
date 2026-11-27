@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 type Kind = "dev" | "docker" | "system";
 
@@ -15,8 +16,6 @@ interface PortEntry {
   framework: string | null;
   kind: Kind;
 }
-
-const REFRESH_MS = 3000;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const rowsEl = $<HTMLTableSectionElement>("#rows");
@@ -67,19 +66,23 @@ async function refresh(manual = false) {
   inFlight = true;
   if (manual) refreshBtn.classList.add("spin");
   try {
-    const next = await invoke<PortEntry[]>("list_ports");
-    diffAndLog(next);
-    entries = next;
-    const snapshot = JSON.stringify(next);
-    if (snapshot !== lastSnapshot || manual) {
-      lastSnapshot = snapshot;
-      render();
-    }
+    apply(await invoke<PortEntry[]>("list_ports"), manual);
   } catch (err) {
     log("error", String(err), "err");
   } finally {
     inFlight = false;
     refreshBtn.classList.remove("spin");
+  }
+}
+
+/** Applies a new snapshot, from a manual refresh or from the backend's scan loop. */
+function apply(next: PortEntry[], forceRender = false) {
+  diffAndLog(next);
+  entries = next;
+  const snapshot = JSON.stringify(next);
+  if (snapshot !== lastSnapshot || forceRender) {
+    lastSnapshot = snapshot;
+    render();
   }
 }
 
@@ -261,7 +264,11 @@ searchEl.addEventListener("input", render);
 showSystemEl.addEventListener("change", render);
 $<HTMLButtonElement>("#clear-log").addEventListener("click", () => (logEl.innerHTML = ""));
 
-// Poll while visible; refresh immediately when the window regains focus.
-setInterval(() => !document.hidden && refresh(), REFRESH_MS);
+// The Rust side scans every few seconds and pushes changes; actions taken from
+// the menu bar are logged here too.
+listen<PortEntry[]>("ports-updated", (ev) => apply(ev.payload));
+listen<{ tag: string; message: string; cls: string }>("portscope-log", (ev) =>
+  log(ev.payload.tag, ev.payload.message, ev.payload.cls),
+);
 window.addEventListener("focus", () => refresh());
 refresh(true);

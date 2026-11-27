@@ -1,7 +1,9 @@
 mod actions;
 mod ports;
+mod tray;
 
 use ports::PortEntry;
+use tauri::{AppHandle, WindowEvent};
 
 /// Runs blocking work (spawning lsof/ps/docker) off the main thread so the UI stays responsive.
 async fn blocking<T, F>(f: F) -> Result<T, String>
@@ -15,8 +17,10 @@ where
 }
 
 #[tauri::command]
-async fn list_ports() -> Result<Vec<PortEntry>, String> {
-    blocking(ports::list_ports).await
+async fn list_ports(app: AppHandle) -> Result<Vec<PortEntry>, String> {
+    let entries = blocking(ports::list_ports).await?;
+    tray::publish(&app, entries.clone());
+    Ok(entries)
 }
 
 #[tauri::command]
@@ -52,6 +56,17 @@ fn open_in_editor(path: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            tray::setup(app.handle())?;
+            Ok(())
+        })
+        // Closing the window keeps PortScope alive in the menu bar / tray.
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             list_ports,
             find_free_port,
@@ -61,6 +76,13 @@ pub fn run() {
             reveal_folder,
             open_in_editor
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running PortScope");
+        .build(tauri::generate_context!())
+        .expect("error while building PortScope")
+        .run(|_app, _event| {
+            // Clicking the Dock icon brings the hidden window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                tray::show_main(_app);
+            }
+        });
 }
