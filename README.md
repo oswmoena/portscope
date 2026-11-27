@@ -7,6 +7,7 @@ Panel de escritorio (Tauri 2 + Rust) para ver **qué app está usando cada puert
 - Botón **Puerto libre**: sugiere el siguiente puerto disponible y lo copia al portapapeles.
 - Acciones por fila: abrir en el navegador, abrir carpeta, abrir en VS Code, detener (`SIGTERM` / `docker stop`).
 - Log de actividad: qué app abrió o liberó qué puerto, en tiempo real.
+- **Barra de menú (macOS) / bandeja (Windows):** ve tus apps y sus puertos sin abrir la ventana; cerrar la ventana deja PortScope corriendo ahí.
 
 ## Descargar
 
